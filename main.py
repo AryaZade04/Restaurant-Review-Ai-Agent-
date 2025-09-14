@@ -1,49 +1,57 @@
+# main.py
 import streamlit as st
-from langchain_ollama.llms import OllamaLLM
-from langchain_core.prompts import ChatPromptTemplate
+import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 # -----------------------------
-# Simple in-memory retriever for demo
+# Load Data
 # -----------------------------
-def get_reviews(question: str):
-    # For demo purposes, these are sample reviews
-    sample_reviews = """
-    1. The pizza was amazing, especially the Margherita!
-    2. Great ambiance, but the service was slow.
-    3. Loved the cheese burst pizza, would visit again.
-    4. The pepperoni pizza was slightly overcooked, but overall good.
-    5. Affordable prices and friendly staff.
-    """
-    return sample_reviews
+@st.cache_data
+def load_data():
+    df = pd.read_csv("restaurant_reviews.csv")
+    df['Review'] = df['Review'].astype(str)
+    return df
 
-# -----------------------------
-# Streamlit App
-# -----------------------------
+df = load_data()
+
 st.title("🍕 Restaurant Review AI App")
+st.write("Ask any question about the restaurant, pizzas, or customer experience:")
 
-# Initialize Ollama model
-model = OllamaLLM(model="llama3.2")
+# -----------------------------
+# User Input
+# -----------------------------
+question = st.text_input("Your question:")
 
-# Define the prompt template
-template = """
-You are an expert in answering questions about a pizza restaurant.
+# -----------------------------
+# Simple Semantic Search
+# -----------------------------
+def get_relevant_reviews(question, df, top_k=5):
+    """Return top_k most relevant reviews based on cosine similarity."""
+    vectorizer = TfidfVectorizer(stop_words='english')
+    all_texts = df['Review'].tolist() + [question]
+    tfidf_matrix = vectorizer.fit_transform(all_texts)
+    
+    # similarity between question and all reviews
+    sim = cosine_similarity(tfidf_matrix[-1], tfidf_matrix[:-1])
+    sim_scores = sim.flatten()
+    
+    top_indices = sim_scores.argsort()[::-1][:top_k]
+    return df.iloc[top_indices], sim_scores[top_indices]
 
-Here are some relevant reviews: {reviews}
+# -----------------------------
+# Generate Answer
+# -----------------------------
+def generate_answer(question, df):
+    relevant_reviews, scores = get_relevant_reviews(question, df)
+    answer = "Based on customer reviews:\n\n"
+    for idx, row in relevant_reviews.iterrows():
+        answer += f"- {row['Title']} ({row['Rating']}/5): {row['Review'][:200]}...\n"
+    return answer
 
-Here is the question to answer: {question}
-"""
-prompt = ChatPromptTemplate.from_template(template)
-chain = prompt | model
-
-# Input box for the user's question
-question = st.text_input("Ask a question about the restaurant:")
-
-# Button to get AI answer
-if st.button("Get Answer"):
-    if question.strip() == "":
-        st.warning("Please enter a question.")
-    else:
-        reviews = get_reviews(question)  # Fetch reviews
-        result = chain.invoke({"reviews": reviews, "question": question})
-        st.subheader("AI Answer:")
-        st.write(result)
+# -----------------------------
+# Display Answer
+# -----------------------------
+if question:
+    answer = generate_answer(question, df)
+    st.markdown(answer)
