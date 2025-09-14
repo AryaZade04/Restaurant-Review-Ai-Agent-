@@ -10,7 +10,7 @@ import openai
 # -----------------------------
 @st.cache_data
 def load_data():
-    df = pd.read_csv("restaurant_reviews.csv")
+    df = pd.read_csv("realistic_restaurant_reviews.csv")
     df['Review'] = df['Review'].astype(str)
     return df
 
@@ -83,4 +83,5 @@ if question:
     with st.spinner("Generating answer..."):
         answer = generate_answer(question, df)
     st.markdown(f"**Answer:** {answer}")
+
 
